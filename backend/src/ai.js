@@ -7,12 +7,24 @@ async function generateEmailResponse(inquiry, aiModel = 'gpt-4o-mini') {
     return `Thanks for reaching out. We received your request: "${inquiry}". Our team will follow up within one business day.`;
   }
 
-  const completion = await client.responses.create({
+  const completion = await client.chat.completions.create({
     model: aiModel,
-    input: `Write a concise and friendly business support email reply to this inquiry:\n${inquiry}`,
+    messages: [
+      {
+        role: 'system',
+        content: 'You are a concise and friendly customer support assistant.',
+      },
+      {
+        role: 'user',
+        content: `Write a concise and friendly business support email reply to this inquiry:\n${inquiry}`,
+      },
+    ],
   });
 
-  return completion.output_text;
+  return (
+    completion.choices?.[0]?.message?.content ||
+    'Thanks for your message. We will get back to you shortly.'
+  );
 }
 
 module.exports = { generateEmailResponse };

@@ -88,4 +88,4 @@ Includes unit/integration tests for invoice parsing and key API behavior.
 - Replace Google OAuth stub with full OAuth authorization code flow.
 - Add per-tenant organizations and RBAC.
 - Add richer invoice OCR parser and document storage.
-- Add production-grade auditing, rate limiting, and background job workers.
+- Expand rate limiting into per-route policies and add production-grade auditing/background job workers.

@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const multer = require('multer');
+const { rateLimit } = require('express-rate-limit');
 
 const {
   initDb,
@@ -26,6 +27,13 @@ const { parseInvoiceText } = require('./invoice');
 const { createCalendarEvent } = require('./googleCalendar');
 
 const upload = multer({ storage: multer.memoryStorage() });
+const apiRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please retry shortly.' },
+});
 
 async function createApp() {
   await initDb();
@@ -33,6 +41,7 @@ async function createApp() {
   const app = express();
   app.use(cors());
   app.use(express.json());
+  app.use('/api', apiRateLimit);
 
   app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
