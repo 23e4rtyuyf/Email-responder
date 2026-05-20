@@ -1,0 +1,29 @@
+{
+  "name": "ai-assistant-saas",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run test --workspace backend",
+    "dev": "npm run dev --workspace backend",
+    "frontend": "npm run dev --workspace frontend",
+    "build": "npm run build --workspace frontend"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/23e4rtyuyf/Email-responder.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/23e4rtyuyf/Email-responder/issues"
+  },
+  "homepage": "https://github.com/23e4rtyuyf/Email-responder#readme",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ]
+}
