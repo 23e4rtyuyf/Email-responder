@@ -50,3 +50,11 @@ CREATE TABLE IF NOT EXISTS automation_runs (
   details TEXT,
   created_at TIMESTAMP DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS drafts (
+  id SERIAL PRIMARY KEY,
+  inquiry TEXT NOT NULL,
+  response TEXT NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);

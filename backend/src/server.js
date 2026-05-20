@@ -1,7 +1,10 @@
 require('dotenv').config();
 const { createApp } = require('./app');
+const { assertJwtSecretIsConfigured } = require('./auth');
 
 const port = process.env.PORT || 4000;
+
+assertJwtSecretIsConfigured();
 
 createApp()
   .then((app) => {

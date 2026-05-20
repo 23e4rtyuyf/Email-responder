@@ -1,6 +1,7 @@
 const { Pool } = require('pg');
 
 const useMemory = !process.env.DATABASE_URL;
+
 const memory = {
   users: [],
   onboardingTasks: [],
@@ -8,7 +9,8 @@ const memory = {
   meetings: [],
   settings: { aiModel: 'gpt-4o-mini', autoReplyEnabled: true },
   automations: [],
-  ids: { user: 1, task: 1, invoice: 1, meeting: 1, automation: 1 },
+  drafts: [],
+  ids: { user: 1, task: 1, invoice: 1, meeting: 1, automation: 1, draft: 1 },
 };
 
 const pool = useMemory
@@ -17,6 +19,97 @@ const pool = useMemory
       connectionString: process.env.DATABASE_URL,
       ssl: process.env.PGSSLMODE === 'require' ? { rejectUnauthorized: false } : undefined,
     });
+
+function toIso(value) {
+  if (!value) return null;
+  return typeof value === 'string' ? value : new Date(value).toISOString();
+}
+
+function mapUserInternal(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    role: row.role,
+    googleId: row.google_id ?? row.googleId ?? null,
+    passwordHash: row.password_hash ?? row.passwordHash ?? null,
+    createdAt: toIso(row.created_at ?? row.createdAt),
+  };
+}
+
+function mapUserPublic(row) {
+  if (!row) return null;
+  const mapped = mapUserInternal(row);
+  return {
+    id: mapped.id,
+    name: mapped.name,
+    email: mapped.email,
+    role: mapped.role,
+    googleId: mapped.googleId,
+    createdAt: mapped.createdAt,
+  };
+}
+
+function mapOnboardingTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    completed: Boolean(row.completed),
+    formData: row.form_data ?? row.formData ?? null,
+    eSignature: row.esignature ?? row.eSignature ?? null,
+    createdAt: toIso(row.created_at ?? row.createdAt),
+  };
+}
+
+function mapInvoice(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    vendor: row.vendor,
+    invoiceNumber: row.invoice_number ?? row.invoiceNumber,
+    amount: row.amount == null ? 0 : Number(row.amount),
+    dueDate: row.due_date ?? row.dueDate ?? null,
+    rawText: row.raw_text ?? row.rawText ?? '',
+    createdAt: toIso(row.created_at ?? row.createdAt),
+  };
+}
+
+function mapMeeting(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    title: row.title,
+    startTime: row.start_time ?? row.startTime,
+    endTime: row.end_time ?? row.endTime,
+    attendees: row.attendees || [],
+    calendarEventId: row.calendar_event_id ?? row.calendarEventId ?? null,
+    createdAt: toIso(row.created_at ?? row.createdAt),
+  };
+}
+
+function mapAutomation(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: row.type,
+    status: row.status,
+    details: row.details,
+    createdAt: toIso(row.created_at ?? row.createdAt),
+  };
+}
+
+function mapDraft(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    inquiry: row.inquiry,
+    response: row.response,
+    createdAt: toIso(row.created_at ?? row.createdAt),
+    updatedAt: toIso(row.updated_at ?? row.updatedAt),
+  };
+}
 
 async function initDb() {
   if (useMemory) {
@@ -76,6 +169,14 @@ async function initDb() {
       details TEXT,
       created_at TIMESTAMP DEFAULT NOW()
     );
+
+    CREATE TABLE IF NOT EXISTS drafts (
+      id SERIAL PRIMARY KEY,
+      inquiry TEXT NOT NULL,
+      response TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
+    );
   `);
 
   await pool.query(
@@ -94,39 +195,48 @@ async function createUser({ name, email, passwordHash, role = 'user', googleId =
       err.code = 'DUPLICATE';
       throw err;
     }
+
     const user = {
       id: memory.ids.user++,
       name,
       email,
-      password_hash: passwordHash || null,
       role,
-      google_id: googleId,
+      googleId,
+      passwordHash: passwordHash || null,
+      createdAt: new Date().toISOString(),
     };
+
     memory.users.push(user);
-    return user;
+    return mapUserInternal(user);
   }
 
   const result = await pool.query(
-    'INSERT INTO users (name, email, password_hash, role, google_id) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    `INSERT INTO users (name, email, password_hash, role, google_id)
+     VALUES ($1, $2, $3, $4, $5)
+     RETURNING *`,
     [name, email, passwordHash || null, role, googleId],
   );
-  return result.rows[0];
+
+  return mapUserInternal(result.rows[0]);
 }
 
 async function findUserByEmail(email) {
   if (useMemory) {
-    return memory.users.find((u) => u.email === email) || null;
+    const user = memory.users.find((u) => u.email === email) || null;
+    return mapUserInternal(user);
   }
+
   const result = await pool.query('SELECT * FROM users WHERE email = $1 LIMIT 1', [email]);
-  return result.rows[0] || null;
+  return mapUserInternal(result.rows[0] || null);
 }
 
 async function listUsers() {
   if (useMemory) {
-    return memory.users;
+    return memory.users.map(mapUserPublic);
   }
-  const result = await pool.query('SELECT id, name, email, role, created_at FROM users ORDER BY id ASC');
-  return result.rows;
+
+  const result = await pool.query('SELECT id, name, email, role, google_id, created_at FROM users ORDER BY id ASC');
+  return result.rows.map(mapUserPublic);
 }
 
 async function addOnboardingTask({ title, formData = null, eSignature = null }) {
@@ -135,19 +245,20 @@ async function addOnboardingTask({ title, formData = null, eSignature = null }) 
       id: memory.ids.task++,
       title,
       completed: false,
-      form_data: formData,
-      esignature: eSignature,
-      created_at: new Date().toISOString(),
+      formData,
+      eSignature,
+      createdAt: new Date().toISOString(),
     };
     memory.onboardingTasks.push(task);
-    return task;
+    return mapOnboardingTask(task);
   }
 
   const result = await pool.query(
     'INSERT INTO onboarding_tasks (title, form_data, esignature) VALUES ($1, $2, $3) RETURNING *',
     [title, formData, eSignature],
   );
-  return result.rows[0];
+
+  return mapOnboardingTask(result.rows[0]);
 }
 
 async function updateOnboardingTask(taskId, completed) {
@@ -155,29 +266,39 @@ async function updateOnboardingTask(taskId, completed) {
     const task = memory.onboardingTasks.find((t) => t.id === Number(taskId));
     if (!task) return null;
     task.completed = completed;
-    return task;
+    return mapOnboardingTask(task);
   }
 
   const result = await pool.query(
     'UPDATE onboarding_tasks SET completed = $1 WHERE id = $2 RETURNING *',
     [completed, taskId],
   );
-  return result.rows[0] || null;
+
+  return mapOnboardingTask(result.rows[0] || null);
 }
 
 async function listOnboardingTasks() {
   if (useMemory) {
-    return memory.onboardingTasks;
+    return memory.onboardingTasks.map(mapOnboardingTask);
   }
+
   const result = await pool.query('SELECT * FROM onboarding_tasks ORDER BY id ASC');
-  return result.rows;
+  return result.rows.map(mapOnboardingTask);
 }
 
 async function addInvoice(invoice) {
   if (useMemory) {
-    const record = { id: memory.ids.invoice++, created_at: new Date().toISOString(), ...invoice };
+    const record = {
+      id: memory.ids.invoice++,
+      vendor: invoice.vendor,
+      invoiceNumber: invoice.invoiceNumber,
+      amount: invoice.amount,
+      dueDate: invoice.dueDate,
+      rawText: invoice.rawText,
+      createdAt: new Date().toISOString(),
+    };
     memory.invoices.push(record);
-    return record;
+    return mapInvoice(record);
   }
 
   const result = await pool.query(
@@ -185,22 +306,32 @@ async function addInvoice(invoice) {
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [invoice.vendor, invoice.invoiceNumber, invoice.amount, invoice.dueDate, invoice.rawText],
   );
-  return result.rows[0];
+
+  return mapInvoice(result.rows[0]);
 }
 
 async function listInvoices() {
   if (useMemory) {
-    return memory.invoices;
+    return memory.invoices.map(mapInvoice);
   }
+
   const result = await pool.query('SELECT * FROM invoices ORDER BY id DESC');
-  return result.rows;
+  return result.rows.map(mapInvoice);
 }
 
 async function addMeeting(meeting) {
   if (useMemory) {
-    const record = { id: memory.ids.meeting++, created_at: new Date().toISOString(), ...meeting };
+    const record = {
+      id: memory.ids.meeting++,
+      title: meeting.title,
+      startTime: meeting.startTime,
+      endTime: meeting.endTime,
+      attendees: meeting.attendees,
+      calendarEventId: meeting.calendarEventId,
+      createdAt: new Date().toISOString(),
+    };
     memory.meetings.push(record);
-    return record;
+    return mapMeeting(record);
   }
 
   const result = await pool.query(
@@ -208,36 +339,43 @@ async function addMeeting(meeting) {
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [meeting.title, meeting.startTime, meeting.endTime, meeting.attendees, meeting.calendarEventId],
   );
-  return result.rows[0];
+
+  return mapMeeting(result.rows[0]);
 }
 
 async function listMeetings() {
   if (useMemory) {
-    return memory.meetings;
+    return memory.meetings.map(mapMeeting);
   }
+
   const result = await pool.query('SELECT * FROM meetings ORDER BY id DESC');
-  return result.rows;
+  return result.rows.map(mapMeeting);
 }
 
 async function getSettings() {
   if (useMemory) {
-    return memory.settings;
+    return { ...memory.settings };
   }
+
   const result = await pool.query('SELECT ai_model, auto_reply_enabled FROM settings WHERE id = 1');
   const row = result.rows[0];
-  return { aiModel: row.ai_model, autoReplyEnabled: row.auto_reply_enabled };
+  return {
+    aiModel: row?.ai_model || 'gpt-4o-mini',
+    autoReplyEnabled: Boolean(row?.auto_reply_enabled),
+  };
 }
 
 async function updateSettings({ aiModel, autoReplyEnabled }) {
   if (useMemory) {
     memory.settings = { aiModel, autoReplyEnabled };
-    return memory.settings;
+    return { ...memory.settings };
   }
 
   await pool.query('UPDATE settings SET ai_model = $1, auto_reply_enabled = $2 WHERE id = 1', [
     aiModel,
     autoReplyEnabled,
   ]);
+
   return getSettings();
 }
 
@@ -248,25 +386,98 @@ async function addAutomationRun({ type, status, details }) {
       type,
       status,
       details,
-      created_at: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
     memory.automations.push(run);
-    return run;
+    return mapAutomation(run);
   }
 
   const result = await pool.query(
     'INSERT INTO automation_runs (type, status, details) VALUES ($1, $2, $3) RETURNING *',
     [type, status, details],
   );
-  return result.rows[0];
+
+  return mapAutomation(result.rows[0]);
 }
 
-async function listAutomations() {
+async function listAutomations(limit = 25) {
   if (useMemory) {
-    return memory.automations;
+    return memory.automations.slice(-limit).reverse().map(mapAutomation);
   }
-  const result = await pool.query('SELECT * FROM automation_runs ORDER BY id DESC LIMIT 25');
-  return result.rows;
+
+  const result = await pool.query('SELECT * FROM automation_runs ORDER BY id DESC LIMIT $1', [limit]);
+  return result.rows.map(mapAutomation);
+}
+
+async function createDraft({ inquiry, response }) {
+  if (useMemory) {
+    const now = new Date().toISOString();
+    const draft = {
+      id: memory.ids.draft++,
+      inquiry,
+      response,
+      createdAt: now,
+      updatedAt: now,
+    };
+    memory.drafts.push(draft);
+    return mapDraft(draft);
+  }
+
+  const result = await pool.query(
+    'INSERT INTO drafts (inquiry, response) VALUES ($1, $2) RETURNING *',
+    [inquiry, response],
+  );
+
+  return mapDraft(result.rows[0]);
+}
+
+async function listDrafts() {
+  if (useMemory) {
+    return memory.drafts.slice().sort((a, b) => b.id - a.id).map(mapDraft);
+  }
+
+  const result = await pool.query('SELECT * FROM drafts ORDER BY id DESC');
+  return result.rows.map(mapDraft);
+}
+
+async function getDraftById(id) {
+  if (useMemory) {
+    const draft = memory.drafts.find((d) => d.id === Number(id));
+    return mapDraft(draft || null);
+  }
+
+  const result = await pool.query('SELECT * FROM drafts WHERE id = $1', [id]);
+  return mapDraft(result.rows[0] || null);
+}
+
+async function updateDraft(id, { inquiry, response }) {
+  if (useMemory) {
+    const draft = memory.drafts.find((d) => d.id === Number(id));
+    if (!draft) return null;
+    draft.inquiry = inquiry;
+    draft.response = response;
+    draft.updatedAt = new Date().toISOString();
+    return mapDraft(draft);
+  }
+
+  const result = await pool.query(
+    'UPDATE drafts SET inquiry = $1, response = $2, updated_at = NOW() WHERE id = $3 RETURNING *',
+    [inquiry, response, id],
+  );
+
+  return mapDraft(result.rows[0] || null);
+}
+
+async function deleteDraft(id) {
+  if (useMemory) {
+    const idx = memory.drafts.findIndex((d) => d.id === Number(id));
+    if (idx === -1) return false;
+    memory.drafts.splice(idx, 1);
+    return true;
+  }
+
+  const result = await pool.query('DELETE FROM drafts WHERE id = $1', [id]);
+  return result.rowCount > 0;
 }
 
 async function getDashboardMetrics() {
@@ -287,6 +498,18 @@ async function getDashboardMetrics() {
   };
 }
 
+function resetForTests() {
+  if (!useMemory) return;
+  memory.users = [];
+  memory.onboardingTasks = [];
+  memory.invoices = [];
+  memory.meetings = [];
+  memory.settings = { aiModel: 'gpt-4o-mini', autoReplyEnabled: true };
+  memory.automations = [];
+  memory.drafts = [];
+  memory.ids = { user: 1, task: 1, invoice: 1, meeting: 1, automation: 1, draft: 1 };
+}
+
 module.exports = {
   initDb,
   createUser,
@@ -303,5 +526,11 @@ module.exports = {
   updateSettings,
   addAutomationRun,
   listAutomations,
+  createDraft,
+  listDrafts,
+  getDraftById,
+  updateDraft,
+  deleteDraft,
   getDashboardMetrics,
+  resetForTests,
 };

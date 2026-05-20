@@ -1,9 +1,30 @@
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const DEV_FALLBACK_SECRET = 'development-local-secret';
+
+function resolveJwtSecret() {
+  const explicitSecret = process.env.JWT_SECRET;
+  const env = process.env.NODE_ENV || 'development';
+
+  if (explicitSecret) {
+    return explicitSecret;
+  }
+
+  if (env === 'development') {
+    console.warn('WARNING: JWT_SECRET is not set. Using a development-only fallback secret.');
+    return DEV_FALLBACK_SECRET;
+  }
+
+  throw new Error('JWT_SECRET must be configured when NODE_ENV is not development.');
+}
+
+function assertJwtSecretIsConfigured() {
+  resolveJwtSecret();
+}
 
 function createToken(user) {
-  return jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '12h' });
+  const secret = resolveJwtSecret();
+  return jwt.sign({ id: user.id, email: user.email, role: user.role }, secret, { expiresIn: '12h' });
 }
 
 function requireAuth(req, res, next) {
@@ -15,9 +36,9 @@ function requireAuth(req, res, next) {
   }
 
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
+    req.user = jwt.verify(token, resolveJwtSecret());
     return next();
-  } catch (error) {
+  } catch (_error) {
     return res.status(401).json({ error: 'Invalid auth token' });
   }
 }
@@ -33,4 +54,5 @@ module.exports = {
   createToken,
   requireAuth,
   requireAdmin,
+  assertJwtSecretIsConfigured,
 };
