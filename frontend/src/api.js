@@ -15,7 +15,7 @@ async function parseResponse(response) {
   if (text) {
     try {
       payload = JSON.parse(text);
-    } catch (_error) {
+    } catch {
       payload = { error: text };
     }
   }

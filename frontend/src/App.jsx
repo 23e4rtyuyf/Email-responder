@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { api } from './api';
 import './App.css';
 
@@ -62,12 +62,6 @@ function App() {
       settings: isAuthed && isAdmin,
     };
   }, [isAuthed, isAdmin]);
-
-  useEffect(() => {
-    if (!canViewTab[tab]) {
-      setTab('auth');
-    }
-  }, [canViewTab, tab]);
 
   function setSession(payload) {
     localStorage.setItem('token', payload.token);
