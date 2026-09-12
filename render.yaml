@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: email-responder
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python src/web_main.py"
+    autoDeploy: true
+    envVars:
+      - key: EMAIL_RESPONDER_API_KEY
+        sync: false
+      - key: EMAIL_RESPONDER_FROM_NAME
+        value: Support Team
