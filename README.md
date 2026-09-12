@@ -12,6 +12,7 @@ A Python email responder app with a built-in three-click website onboarding flow
 - `src/email_responder/web.py` — lightweight website and onboarding routes
 - `src/main.py` — CLI example
 - `src/web_main.py` — website entrypoint
+- `render.yaml` — live deployment blueprint
 - `tests/test_pipeline.py` — responder tests
 - `tests/test_onboarding.py` — onboarding flow tests
 - `.env.example` — environment variable template
@@ -25,7 +26,7 @@ A Python email responder app with a built-in three-click website onboarding flow
    ```
 3. Add your own `EMAIL_RESPONDER_API_KEY` value in `.env`
 
-## Run website (three-click signup)
+## Run website locally (three-click signup)
 
 ```bash
 python src/web_main.py
@@ -36,6 +37,20 @@ Open `http://127.0.0.1:8000` and complete:
 1. **Start setup**
 2. **Connect email**
 3. **Activate**
+
+## Publish live (actual running app)
+
+GitHub Pages cannot run this Python backend. Use Render for a live hosted service.
+
+1. Push this branch to GitHub.
+2. In Render, create a new **Blueprint** service and select this repo.
+3. Render reads `render.yaml` automatically.
+4. Set environment variable `EMAIL_RESPONDER_API_KEY` in Render dashboard.
+5. Deploy and open your Render URL.
+
+After deploy, verify:
+- `https://<your-service>.onrender.com/healthz` returns `ok`
+- Home page loads and the 3-click flow works.
 
 ## Run CLI demo
 
@@ -51,4 +66,4 @@ python -m unittest discover -s tests -p "test_*.py"
 
 ## About the API key
 
-This repository does not contain any real API key. You must create one from the provider you plan to use and put it in your local `.env` file.
+This repository does not contain any real API key. You must create one from the provider you plan to use and put it in your local `.env` file or in your deployment platform environment settings.

@@ -39,6 +39,16 @@ class ResponderWebApp:
         if method == "GET" and path == "/":
             return self._with_cookie(self._landing_page(), set_cookie_header)
 
+        if method == "GET" and path == "/healthz":
+            return self._with_cookie(
+                HttpResponse(
+                    status="200 OK",
+                    headers=[("Content-Type", "text/plain; charset=utf-8")],
+                    body=b"ok",
+                ),
+                set_cookie_header,
+            )
+
         if method == "POST" and path == "/start":
             self.signup.start_setup(session.token)
             return self._with_cookie(self._redirect("/setup"), set_cookie_header)
